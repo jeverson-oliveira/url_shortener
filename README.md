@@ -49,10 +49,11 @@ As seguintes tecnologias foram utilizadas neste projeto:
 
 | Tecnologia | Versão | Finalidade |
 |---|---|---|
-| Java | 17+ | Linguagem principal |
-| Spring Boot | 3.x | Framework web |
-| Maven | 3.x | Gerenciador de dependências |
-| H2 / PostgreSQL | - | Banco de dados |
+| Java | 21 | Linguagem principal (LTS) |
+| Spring Boot | 3.5.3 | Framework web |
+| Maven | 3.9+ | Gerenciador de dependências |
+| MySQL | 8.0 | Banco de dados |
+| Docker / Compose | 29+ / v5+ | Containerização |
 
 ---
 
@@ -60,50 +61,81 @@ As seguintes tecnologias foram utilizadas neste projeto:
 
 ### Pré-requisitos
 
-Antes de começar, você vai precisar ter instalado na sua máquina:
-
-- [Java 17+](https://www.oracle.com/java/technologies/downloads/)
-- [Maven 3+](https://maven.apache.org/download.cgi)
+- [Java 21](https://www.oracle.com/java/technologies/downloads/) (LTS)
+- [Maven 3.9+](https://maven.apache.org/download.cgi) ou use o wrapper `./mvnw`
 - [Git](https://git-scm.com/)
+- [Docker + Docker Compose](https://docs.docker.com/get-docker/) *(opcional, recomendado)*
 
-### Passo a passo
+### Configuração de ambiente
 
 ```bash
-# 1. Clone o repositório
-git clone https://github.com/devjeverson/url_shortener.git
-
-# 2. Acesse a pasta do projeto
-cd url_shortener
-
-# 3. Instale as dependências e gere o build
-mvn clean install
-
-# 4. Rode a aplicação
-mvn spring-boot:run
+cp .env.example .env
+# edite .env se necessário: DB_URL, DB_USER, DB_PASS, APP_BASE_URL
 ```
 
-A aplicação estará disponível em: **`http://localhost:8080`**
+Variáveis principais (`application.properties` já tem defaults para dev):
+- `DB_URL` (default `jdbc:mysql://localhost:3306/shortener?...`)
+- `DB_USER` / `DB_PASS`
+- `APP_BASE_URL` (default `http://localhost:8080`, usado para montar a URL curta)
+
+### Opção A — Docker (recomendado)
+
+```bash
+# build + sobe MySQL 8.0 + app
+docker compose up --build
+
+# logs
+docker compose logs -f app
+```
+
+A aplicação estará em **`http://localhost:8080`** e MySQL em **`localhost:3306`**.
+
+### Opção B — Local (sem Docker)
+
+```bash
+# 1. Clone
+git clone https://github.com/jeverson-oliveira/url_shortener.git
+cd url_shortener
+
+# 2. Configure um MySQL local e ajuste .env ou exporte DB_URL/DB_USER/DB_PASS
+
+# 3. Build
+./mvnw clean package -DskipTests
+
+# 4. Run
+./mvnw spring-boot:run
+# ou
+java -jar target/shortener-0.0.1-SNAPSHOT.jar
+```
 
 ---
 
 ## 📡 Endpoints
 
+> **Nota atual:** `POST /shorten` ainda recebe `text/plain` com a URL pura (legado). A evolução para DTO JSON `{"url": "..."}` + resposta JSON está no roadmap e já tem `spring-boot-starter-validation` no `pom`.
+
 ### `POST /shorten`
 Encurta uma URL longa.
 
-**Request Body:**
-```json
-{
-  "url": "https://www.exemplo.com/pagina-muito-longa/com-varios-parametros"
-}
+**Request (atual):**
+```bash
+curl -X POST http://localhost:8080/shorten \
+  -H "Content-Type: text/plain" \
+  -d "https://www.exemplo.com/pagina-muito-longa/com-varios-parametros"
 ```
 
-**Response:**
+**Response (atual — `text/plain`):**
+```
+http://localhost:8080/abc123
+```
+> O `baseUrl` é configurável via `APP_BASE_URL` (evita hardcode de `localhost`).
+
+**Roadmap — contrato JSON (em breve):**
 ```json
-{
-  "shortUrl": "http://localhost:8080/abc123",
-  "originalUrl": "https://www.exemplo.com/pagina-muito-longa/com-varios-parametros"
-}
+// Request
+{ "url": "https://www.exemplo.com/..." }
+// Response 201
+{ "shortUrl": "http://localhost:8080/abc123", "originalUrl": "https://www.exemplo.com/..." }
 ```
 
 ---
@@ -112,8 +144,9 @@ Encurta uma URL longa.
 Redireciona para a URL original correspondente ao código.
 
 ```
-GET /abc123  →  302 Redirect  →  https://www.exemplo.com/...
+GET /abc123  →  302 Found  →  https://www.exemplo.com/...
 ```
+Retorna `404` se código não existir (via `existsByShortCode` + tratamento futuro com `@ControllerAdvice`).
 
 ---
 
@@ -123,16 +156,19 @@ GET /abc123  →  302 Redirect  →  https://www.exemplo.com/...
 url_shortener/
 ├── src/
 │   ├── main/
-│   │   ├── java/
-│   │   │   └── com/urlshortener/
-│   │   │       ├── controller/   # Camada de controllers REST
-│   │   │       ├── service/      # Regras de negócio
-│   │   │       ├── repository/   # Acesso ao banco de dados
-│   │   │       └── model/        # Entidades
+│   │   ├── java/com/project/shortener/
+│   │   │   ├── controller/   # Camada REST (baseUrl configurável)
+│   │   │   ├── service/      # Regras de negócio + anti-colisão
+│   │   │   ├── repository/   # Spring Data JPA
+│   │   │   └── entity/       # Entidades (@Table, @Column constraints)
 │   │   └── resources/
-│   │       └── application.properties
+│   │       └── application.properties  # defaults + APP_BASE_URL, JPA
 │   └── test/
-├── pom.xml
+├── Dockerfile                # multi-stage eclipse-temurin:21
+├── docker-compose.yml        # app + mysql:8.0 (healthcheck)
+├── .dockerignore
+├── .env.example
+├── pom.xml                   # Java 21, com.mysql:mysql-connector-j, validation
 └── README.md
 ```
 
@@ -158,6 +194,6 @@ Este projeto está sob a licença **MIT**. Veja o arquivo [LICENSE](./LICENSE) p
 
 <div align="center">
 
-Feito com ❤️ por <a href="https://github.com/devjeverson"><strong>devjeverson</strong></a>
+Feito com ❤️ por <a href="https://github.com/jeverson-oliveira"><strong>jeverson-oliveira</strong></a>
 
 </div>
