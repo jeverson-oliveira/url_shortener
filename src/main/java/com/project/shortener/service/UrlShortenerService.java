@@ -2,7 +2,6 @@ package com.project.shortener.service;
 
 import com.project.shortener.entity.ShortUrl;
 import com.project.shortener.repository.ShortUrlRepository;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
@@ -10,11 +9,21 @@ import java.util.UUID;
 
 @Service
 public class UrlShortenerService {
-    @Autowired
-    private ShortUrlRepository repository;
+    private final ShortUrlRepository repository;
+
+    public UrlShortenerService(ShortUrlRepository repository) {
+        this.repository = repository;
+    }
 
     public ShortUrl createShortUrl(String originalUrl) {
-        String code = UUID.randomUUID().toString().substring(0, 6);
+        if (originalUrl == null || originalUrl.isBlank()) {
+            throw new IllegalArgumentException("URL não pode ser vazia");
+        }
+        String trimmed = originalUrl.trim();
+        String code;
+        do {
+            code = UUID.randomUUID().toString().substring(0, 6);
+        } while (repository.existsByShortCode(code));
         ShortUrl shortUrl = new ShortUrl();
         shortUrl.setOriginalUrl(originalUrl);
         shortUrl.setShortCode(code);
