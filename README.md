@@ -112,41 +112,75 @@ java -jar target/shortener-0.0.1-SNAPSHOT.jar
 
 ## 📡 Endpoints
 
-> **Nota atual:** `POST /shorten` ainda recebe `text/plain` com a URL pura (legado). A evolução para DTO JSON `{"url": "..."}` + resposta JSON está no roadmap e já tem `spring-boot-starter-validation` no `pom`.
+Documentação interativa: **`http://localhost:8080/docs`** (Swagger) e **`http://localhost:8080/v3/api-docs`**
 
-### `POST /shorten`
-Encurta uma URL longa.
+### `POST /api/v1/urls` — Encurta URL (JSON) ⭐ *recomendado*
 
-**Request (atual):**
 ```bash
-curl -X POST http://localhost:8080/shorten \
-  -H "Content-Type: text/plain" \
-  -d "https://www.exemplo.com/pagina-muito-longa/com-varios-parametros"
+curl -X POST http://localhost:8080/api/v1/urls \
+  -H "Content-Type: application/json" \
+  -d '{"url":"https://www.exemplo.com/pagina-muito-longa/com-varios-parametros"}'
 ```
 
-**Response (atual — `text/plain`):**
-```
-http://localhost:8080/abc123
-```
-> O `baseUrl` é configurável via `APP_BASE_URL` (evita hardcode de `localhost`).
-
-**Roadmap — contrato JSON (em breve):**
+**Response `201 Created`:**
 ```json
-// Request
-{ "url": "https://www.exemplo.com/..." }
-// Response 201
-{ "shortUrl": "http://localhost:8080/abc123", "originalUrl": "https://www.exemplo.com/..." }
+{
+  "shortUrl": "http://localhost:8080/abc123",
+  "originalUrl": "https://www.exemplo.com/pagina-muito-longa/com-varios-parametros",
+  "code": "abc123",
+  "createdAt": "2026-08-29T13:30:00"
+}
+```
+Headers: `Location: /api/v1/urls/abc123`
+
+### `GET /api/v1/urls/{code}` — Detalhes
+
+```bash
+curl http://localhost:8080/api/v1/urls/abc123
 ```
 
----
+**Response `200`:**
+```json
+{
+  "code": "abc123",
+  "originalUrl": "https://www.exemplo.com/...",
+  "shortUrl": "http://localhost:8080/abc123",
+  "createdAt": "2026-08-29T13:30:00"
+}
+```
+`404` se não existir.
 
-### `GET /{code}`
-Redireciona para a URL original correspondente ao código.
+### `DELETE /api/v1/urls/{code}` — Remove
+
+```bash
+curl -X DELETE http://localhost:8080/api/v1/urls/abc123
+```
+`204 No Content` ou `404`.
+
+### `GET /{code}` — Redireciona
 
 ```
 GET /abc123  →  302 Found  →  https://www.exemplo.com/...
 ```
-Retorna `404` se código não existir (via `existsByShortCode` + tratamento futuro com `@ControllerAdvice`).
+`404` se código não existir (via `UrlNotFoundException` + `GlobalExceptionHandler`).
+
+### `POST /shorten` — Legado (deprecated)
+
+Mantido por compatibilidade, prefira `POST /api/v1/urls`.
+
+```bash
+curl -X POST http://localhost:8080/shorten \
+  -H "Content-Type: text/plain" \
+  -d "https://www.exemplo.com/pagina-muito-longa/com-varios-parametros"
+# → http://localhost:8080/abc123  (text/plain)
+```
+
+### Outros
+
+- `GET /` → `200` status + docs
+- `GET /health` → `200 {"status":"UP"}`
+- `GET /docs` → Swagger UI
+- `GET /favicon.ico` → `204`
 
 ---
 
@@ -157,18 +191,20 @@ url_shortener/
 ├── src/
 │   ├── main/
 │   │   ├── java/com/project/shortener/
-│   │   │   ├── controller/   # Camada REST (baseUrl configurável)
-│   │   │   ├── service/      # Regras de negócio + anti-colisão
+│   │   │   ├── controller/   # REST (UrlShortener, ApiV1Url, Home)
+│   │   │   ├── service/      # Regras + anti-colisão + find/delete
 │   │   │   ├── repository/   # Spring Data JPA
-│   │   │   └── entity/       # Entidades (@Table, @Column constraints)
+│   │   │   ├── dto/          # CreateUrlRequest/Response, UrlDetailsResponse
+│   │   │   ├── exception/    # UrlNotFoundException, GlobalExceptionHandler
+│   │   │   └── entity/       # ShortUrl (@Table, @Column)
 │   │   └── resources/
-│   │       └── application.properties  # defaults + APP_BASE_URL, JPA
+│   │       └── application.properties  # defaults + APP_BASE_URL + springdoc /docs
 │   └── test/
-├── Dockerfile                # multi-stage eclipse-temurin:21
+├── Dockerfile                # multi-stage eclipse-temurin:21 (HEALTHCHECK /health)
 ├── docker-compose.yml        # app + mysql:8.0 (healthcheck)
 ├── .dockerignore
 ├── .env.example
-├── pom.xml                   # Java 21, com.mysql:mysql-connector-j, validation
+├── pom.xml                   # Java 21, com.mysql:mysql-connector-j, validation, springdoc 2.8.8
 └── README.md
 ```
 
